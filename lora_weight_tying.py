@@ -30,7 +30,7 @@ def enable_weight_tying(model):
 
 
     # Check every parameter in the model.
-    for name, param in model.named_parameters():
+    for name, param in model.named_modules():
         
         # Check if the parameter is a lora weight
         if name.endswith("lora_A") or name.endswith("lora_B"):
@@ -40,13 +40,19 @@ def enable_weight_tying(model):
             for part in parts[:-1]:
                 parent_module = getattr(parent_module, part)
 
-            if lora_A is None:
-                lora_A = parent_module.getattr(parts[-1])
-                lora_B = parent_module.getattr(parts[-1])
-            
-            else:
-                parent_module.setattr(parts[-1], lora_A)
-                parent_module.setattr(parts[-1], lora_B)
+            if name.endswith("lora_A"):
+                if lora_A is None:
+                    lora_A = getattr(parent_module, parts[-1])
+                else:
+                    # print(f"Setting {parts} to lora_A")
+                    setattr(parent_module, parts[-1], lora_A)
+
+            elif name.endswith("lora_B"):
+                if lora_B is None:
+                    lora_B = getattr(parent_module, parts[-1])
+                else:
+                    # print(f"Setting {parts} to lora_B")
+                    setattr(parent_module, parts[-1], lora_B)     
 
     return model
 
@@ -98,9 +104,26 @@ if __name__ == '__main__':
     first_layer_lora_B = model.model.gpt_neox.layers[0].attention.query_key_value.lora_B.default.weight
 
     for name, param in model.named_parameters():
-        if name.endswith("lora_A") or name.endswith("lora_B"):
+        if "lora_" in name:
+            print(f"Checking {name}")
             if not torch.equal(param, first_layer_lora_A) and not torch.equal(param, first_layer_lora_B):
                 print(f"Weights are not tied for {name}!")
                 break
+            
+    # Save the model
+    model.save_pretrained("lora_weight_tying")
 
-    print("Weights are tied!")
+    # Load the model
+    model = GPTNeoXForCausalLM.from_pretrained("EleutherAI/pythia-410m")
+    model.load_adapter("lora_weight_tying")
+
+    # Validate that weights are tied
+    first_layer_lora_A = model.gpt_neox.layers[0].attention.query_key_value.lora_A.default.weight
+    first_layer_lora_B = model.gpt_neox.layers[0].attention.query_key_value.lora_B.default.weight
+
+    for name, param in model.named_parameters():
+        if "lora_" in name:
+            print(f"Checking {name}")
+            if not torch.equal(param, first_layer_lora_A) and not torch.equal(param, first_layer_lora_B):
+                print(f"Weights are not tied for {name}!")
+                break

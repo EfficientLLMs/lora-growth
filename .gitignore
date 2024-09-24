@@ -1,1 +1,6 @@
 data/
+models/
+.slurm_logs/
+wandb/
+scripts/
+__pycache__/
